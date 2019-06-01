@@ -3,28 +3,13 @@ use std::io::{Write,Read};
 use std::net::{TcpStream};
 use std::sync::mpsc;
 use rayon::prelude::*;
-use rand::Rng;
-use json;
-
-fn gen_name() -> String {
-    let charset = b"abcdefghijklmnopqrstuvwxyz";
-    let len = 10;
-
-    let mut rng = rand::thread_rng();
-
-    String::from_utf8((0..len)
-        .map(|_|{
-            charset[rng.gen_range(0,len)]
-        })
-        .collect()).unwrap()
-}
 
 fn main() -> std::io::Result<()>{
     let stdin = io::stdin();
     let mut input = TcpStream::connect("127.0.0.1:4444")?;
     let mut output = input.try_clone()?;
 
-    let mut input = {
+    let input = {
            let (send,recv) = mpsc::channel::<String>();
 
             rayon::spawn(move || {
@@ -32,13 +17,13 @@ fn main() -> std::io::Result<()>{
                     let mut buf = [0;1024];
                     input.read(&mut buf).unwrap();
 
-                    send.send(String::from_utf8(buf.to_vec()).unwrap());
+                    send.send(String::from_utf8(buf.to_vec()).unwrap()).unwrap();
                 }
             });
 
             recv
         };
-    let mut output = {
+    let output = {
            let (send,recv) = mpsc::channel::<String>();
 
             rayon::spawn(move || {
