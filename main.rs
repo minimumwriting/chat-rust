@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 use std::sync::{mpsc::{channel,Sender,Receiver},Mutex,Arc};
 use std::collections::BTreeMap;
+use std::ops::Deref;
 
 struct UserInfo {
     name : String,
@@ -16,7 +17,7 @@ fn make_channel_from_stream(stream : TcpStream) -> (Sender<String>,Receiver<Stri
     let mut input = stream;
     let mut output = input.try_clone().unwrap();
 
-    let mut input = {
+    let input = {
             let (send,recv) = channel::<String>();
             rayon::spawn(move || {
                 loop {
@@ -35,7 +36,7 @@ fn make_channel_from_stream(stream : TcpStream) -> (Sender<String>,Receiver<Stri
 
             recv
         };
-    let mut output = {
+    let output = {
            let (send,recv) = channel::<String>();
 
             rayon::spawn(move || {
@@ -56,10 +57,9 @@ fn make_channel_from_stream(stream : TcpStream) -> (Sender<String>,Receiver<Stri
 }
 
 fn handler(stream : TcpStream, user_list : Arc<Mutex<BTreeMap<String,UserInfo>>>) {
-    let mut buf = String::new();
-    let mut name = stream.peer_addr().unwrap().to_string();
+    let name = stream.peer_addr().unwrap().to_string();
 
-    let (mut output,mut input) = make_channel_from_stream(stream);
+    let (output,input) = make_channel_from_stream(stream);
 
     let mut user_list = user_list.lock().unwrap();
 
@@ -98,25 +98,25 @@ fn main() {
 
     loop {
         let mut user_list = user_list.lock().unwrap();
-        let mut toKill = Vec::new();
+        let mut to_kill = Vec::new();
 
-        for (_,userInfo) in user_list.iter() {
-            if let Ok(msg) = userInfo.input.try_recv() {
-                let msg = userInfo.name.clone() + &" : ".to_string() + &msg.clone();
+        for (_,user_info) in user_list.iter() {
+            if let Ok(msg) = user_info.input.try_recv() {
+                let msg = user_info.name.clone() + &" : ".to_string() + &msg.clone();
                 println!("{}",&msg);
 
 
-                for (_, userInfo) in user_list.iter() {
+                for (_, user_info) in user_list.iter() {
                     let msg = msg.clone();
-                    if let Err(err) = userInfo.clone().output.send(msg) {
-                        toKill.push(userInfo.clone().name.clone());
+                    if let Err(_) = user_info.output.send(msg) {
+                        to_kill.push(user_info.name.clone());
                     }
                 }
 
             }
         }
 
-        for name in toKill {
+        for name in to_kill {
             user_list.remove(&name);
         }
     }
